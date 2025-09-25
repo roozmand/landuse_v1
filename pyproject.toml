@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "landuse-v1"
+version = "0.1.0"
+description = "NUTS shapefile handler: load, plot, and query packaged NUTS shapefiles."
+readme = "README.md"
+authors = [
+    { name = "Roozmand", email = "roozmand@gmail.com" }
+]
+license = "MIT"  # use SPDX string instead of table
+requires-python = ">=3.9"
+
+dependencies = [
+    "geopandas",
+    "matplotlib",
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+[tool.setuptools]
+# Automatically find all subpackages
+packages = { find = {} }
+
+[tool.setuptools.package-data]
+landuse_v1 = ["Data/**/*"]
