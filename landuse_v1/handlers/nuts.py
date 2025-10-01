@@ -113,6 +113,28 @@ class NUTSHandler:
 
         means = gdf_crop.groupby("NUTS_NAME")[column].mean().to_dict()
         return means
+    
+    def get_district_mean(self, nuts_name, file_name="airtemp", nuts_level=2, year=2022, country_code="DE", mean_column=None):
+        """
+        Get the mean value for a given district name, feature file, nuts level, and year.
+        Example: get_district_mean("Berlin", file_name="airtemp", nuts_level=2, year=2022)
+        """
+        gdf = self._read_nuts(country_code, file_name, nuts_level, year)
+    
+        # Pick a mean column
+        if mean_column is None:
+            mean_cols = [c for c in gdf.columns if c.endswith("_mean")]
+            if not mean_cols:
+                raise ValueError("No *_mean column found.")
+            mean_column = mean_cols[0]
+    
+        # Find the district by name
+        district = gdf[gdf["NUTS_NAME"] == nuts_name]
+        if district.empty:
+            raise KeyError(f"District '{nuts_name}' not found in NUTS{nuts_level} {year}.")
+    
+        return district.iloc[0][mean_column]
+
 
     # ---------------- Internal helpers ----------------
     def _read_nuts(self, country_code, file_name, nuts_level, year):
