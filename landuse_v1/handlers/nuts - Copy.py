@@ -34,30 +34,6 @@ class NUTSHandler:
 
         self.gdf = gpd.read_file(self.shp_file)
 
-    # --- Optional constructor from shapefile path for crop landuse ---
-    @classmethod
-    def from_shapefile(cls, shp_file: str):
-        obj = cls.__new__(cls)  # bypass __init__
-        obj.shp_file = Path(shp_file)
-        if not obj.shp_file.exists():
-            raise FileNotFoundError(f"Shapefile not found: {obj.shp_file}")
-        obj.gdf = gpd.read_file(obj.shp_file)
-
-        # Try to parse crop name, NUTS level, year from filename if possible
-        import re
-        match = re.match(r".*DE_landuse_(.+)_NUTS(\d+)_(\d{4})\.shp", obj.shp_file.name)
-        if match:
-            obj.file_name, obj.nuts_level, obj.year = match.groups()
-            obj.nuts_level = int(obj.nuts_level)
-            obj.year = int(obj.year)
-            obj.country_code = "DE"
-        else:
-            obj.file_name = obj.shp_file.stem
-            obj.nuts_level = None
-            obj.year = None
-            obj.country_code = "DE"
-        return obj
-
     def mean_columns(self):
         return [c for c in self.gdf.columns if c.endswith("_mean")]
 
@@ -95,32 +71,6 @@ class NUTSHandler:
         if district.empty:
             raise KeyError(f"District {nuts_id} not found in NUTS{self.nuts_level}.")
         return district.iloc[0][mean_column]
-
-    # --- New function: plot landuse ---
-    def plot_landuse(self, column="v_mean", cmap="viridis", figsize=(10, 10)):
-        """Plot land use values for the shapefile (v_mean by default)."""
-        if column not in self.gdf.columns:
-            raise ValueError(f"Column {column} not found in shapefile.")
-        fig, ax = plt.subplots(figsize=figsize)
-        self.gdf.plot(
-            ax=ax,
-            column=column,
-            cmap=cmap,
-            edgecolor="black",
-            linewidth=0.5,
-            legend=True,
-            missing_kwds={"color": "lightgrey", "label": "No data"}
-        )
-        ax.set_title(f"{self.file_name} NUTS{self.nuts_level} ({self.year}) - {column}")
-        ax.axis("off")
-        plt.show()
-
-    # --- New function: get mean landuse for the crop ---
-    def get_crop_mean(self, column="v_mean"):
-        """Return the mean value of land use for the crop across all polygons."""
-        if column not in self.gdf.columns:
-            raise ValueError(f"Column {column} not found in shapefile.")
-        return self.gdf[column].mean()
 
     def __repr__(self):
         return f"<NUTSHandler {self.country_code} NUTS{self.nuts_level} {self.year} ({len(self.gdf)} features)>"
