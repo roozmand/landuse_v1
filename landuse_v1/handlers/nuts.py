@@ -91,6 +91,29 @@ class NUTSHandler:
 
         return gdf_crop[column].mean()
 
+    # ---------------- New utility functions ----------------
+    def get_nuts_names(self, nuts_level, country_code="DE", file_name="airtemp", year=2022):
+        """
+        Return a list of district names for a given NUTS level.
+        """
+        gdf = self._read_nuts(country_code, file_name, nuts_level, year)
+        return gdf["NUTS_NAME"].tolist()
+
+    def get_crop_mean_per_district(self, crop_name, nuts_level=2, year=2022, column="v_mean"):
+        """
+        Return a dictionary with mean values per district for a given crop shapefile.
+        """
+        gdf_crop = self._read_crop(crop_name, nuts_level, year)
+
+        if column not in gdf_crop.columns:
+            raise ValueError(f"Column {column} not found in crop shapefile.")
+
+        if "NUTS_NAME" not in gdf_crop.columns:
+            raise KeyError("Column 'NUTS_NAME' not found in crop shapefile.")
+
+        means = gdf_crop.groupby("NUTS_NAME")[column].mean().to_dict()
+        return means
+
     # ---------------- Internal helpers ----------------
     def _read_nuts(self, country_code, file_name, nuts_level, year):
         package_root = Path(pkg_resources.files(landuse_v1))
