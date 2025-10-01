@@ -3,73 +3,35 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from pathlib import Path
 import importlib.resources as pkg_resources
-import landuse_v1  # the top-level package
+import landuse_v1  # top-level package
 
 class NUTSHandler:
-    """Load, plot and query NUTS shapefiles packaged within `landuse_first/Data`.
-
-    Example:
-        nh = NUTSHandler(country_code="DE",
-                         file_name="airtemp",
-                         nuts_level=3,
-                         year=2018)
+    """
+    NUTSHandler is a stateless handler for NUTS and crop landuse shapefiles.
+    
+    Constructor takes no parameters; all parameters go to the methods.
     """
 
-    def __init__(self, country_code, file_name, nuts_level, year):
-        self.country_code = str(country_code)
-        self.file_name = str(file_name)
-        self.nuts_level = int(nuts_level)
-        self.year = int(year)
+    def __init__(self):
+        pass
 
-        # resolve path to Data folder inside the installed package
-        package_root = Path(pkg_resources.files(landuse_v1))
-        data_root = package_root / "Data" / "Yearly"
+    # ---------------- NUTS functions ----------------
+    def mean_columns(self, country_code="DE", file_name="airtemp", nuts_level=2, year=2022):
+        gdf = self._read_nuts(country_code, file_name, nuts_level, year)
+        return [c for c in gdf.columns if c.endswith("_mean")]
 
-        folder_name = f"{self.country_code}_{self.file_name}_NUTS{self.nuts_level}_{self.year}"
-        folder_path = data_root / folder_name
-        self.shp_file = folder_path / f"{folder_name}.shp"
+    def plot_mean(self, country_code="DE", file_name="airtemp", nuts_level=2, year=2022,
+                  mean_column=None, cmap="Blues", vmin=None, vmax=None, figsize=(10,10)):
+        gdf = self._read_nuts(country_code, file_name, nuts_level, year)
 
-        if not self.shp_file.exists():
-            raise FileNotFoundError(f"Shapefile not found in package data: {self.shp_file}")
-
-        self.gdf = gpd.read_file(self.shp_file)
-
-    # --- Optional constructor from shapefile path for crop landuse ---
-    @classmethod
-    def from_shapefile(cls, shp_file: str):
-        obj = cls.__new__(cls)  # bypass __init__
-        obj.shp_file = Path(shp_file)
-        if not obj.shp_file.exists():
-            raise FileNotFoundError(f"Shapefile not found: {obj.shp_file}")
-        obj.gdf = gpd.read_file(obj.shp_file)
-
-        # Try to parse crop name, NUTS level, year from filename if possible
-        import re
-        match = re.match(r".*DE_landuse_(.+)_NUTS(\d+)_(\d{4})\.shp", obj.shp_file.name)
-        if match:
-            obj.file_name, obj.nuts_level, obj.year = match.groups()
-            obj.nuts_level = int(obj.nuts_level)
-            obj.year = int(obj.year)
-            obj.country_code = "DE"
-        else:
-            obj.file_name = obj.shp_file.stem
-            obj.nuts_level = None
-            obj.year = None
-            obj.country_code = "DE"
-        return obj
-
-    def mean_columns(self):
-        return [c for c in self.gdf.columns if c.endswith("_mean")]
-
-    def plot_mean(self, mean_column=None, cmap="Blues", vmin=None, vmax=None, figsize=(10, 10)):
         if mean_column is None:
-            mean_cols = self.mean_columns()
+            mean_cols = [c for c in gdf.columns if c.endswith("_mean")]
             if not mean_cols:
                 raise ValueError("No *_mean column found.")
             mean_column = mean_cols[0]
 
         fig, ax = plt.subplots(figsize=figsize)
-        self.gdf.plot(
+        gdf.plot(
             ax=ax,
             column=mean_column,
             cmap=cmap,
@@ -80,29 +42,35 @@ class NUTSHandler:
             vmax=vmax,
             missing_kwds={"color": "lightgrey", "label": "No data"}
         )
-        ax.set_title(f"{self.country_code} NUTS{self.nuts_level} - {mean_column} ({self.year})")
+        ax.set_title(f"{country_code} NUTS{nuts_level} - {mean_column} ({year})")
         ax.axis("off")
         plt.show()
 
-    def get_district_value(self, nuts_id, mean_column=None):
+    def get_district_value(self, nuts_id, country_code="DE", file_name="airtemp",
+                           nuts_level=2, year=2022, mean_column=None):
+        gdf = self._read_nuts(country_code, file_name, nuts_level, year)
+
         if mean_column is None:
-            mean_cols = self.mean_columns()
+            mean_cols = [c for c in gdf.columns if c.endswith("_mean")]
             if not mean_cols:
                 raise ValueError("No *_mean column found.")
             mean_column = mean_cols[0]
 
-        district = self.gdf[self.gdf["NUTS_ID"] == nuts_id]
+        district = gdf[gdf["NUTS_ID"] == nuts_id]
         if district.empty:
-            raise KeyError(f"District {nuts_id} not found in NUTS{self.nuts_level}.")
+            raise KeyError(f"District {nuts_id} not found in NUTS{nuts_level}.")
         return district.iloc[0][mean_column]
 
-    # --- New function: plot landuse ---
-    def plot_landuse(self, column="v_mean", cmap="viridis", figsize=(10, 10)):
-        """Plot land use values for the shapefile (v_mean by default)."""
-        if column not in self.gdf.columns:
-            raise ValueError(f"Column {column} not found in shapefile.")
+    # ---------------- Crop landuse functions ----------------
+    def plot_crop_landuse(self, crop_name, nuts_level=2, year=2022,
+                          column="v_mean", cmap="viridis", figsize=(10,10)):
+        gdf_crop = self._read_crop(crop_name, nuts_level, year)
+
+        if column not in gdf_crop.columns:
+            raise ValueError(f"Column {column} not found in crop shapefile.")
+
         fig, ax = plt.subplots(figsize=figsize)
-        self.gdf.plot(
+        gdf_crop.plot(
             ax=ax,
             column=column,
             cmap=cmap,
@@ -111,16 +79,41 @@ class NUTSHandler:
             legend=True,
             missing_kwds={"color": "lightgrey", "label": "No data"}
         )
-        ax.set_title(f"{self.file_name} NUTS{self.nuts_level} ({self.year}) - {column}")
+        ax.set_title(f"{crop_name} NUTS{nuts_level} ({year}) - {column}")
         ax.axis("off")
         plt.show()
 
-    # --- New function: get mean landuse for the crop ---
-    def get_crop_mean(self, column="v_mean"):
-        """Return the mean value of land use for the crop across all polygons."""
-        if column not in self.gdf.columns:
-            raise ValueError(f"Column {column} not found in shapefile.")
-        return self.gdf[column].mean()
+    def get_crop_mean(self, crop_name, nuts_level=2, year=2022, column="v_mean"):
+        gdf_crop = self._read_crop(crop_name, nuts_level, year)
+
+        if column not in gdf_crop.columns:
+            raise ValueError(f"Column {column} not found in crop shapefile.")
+
+        return gdf_crop[column].mean()
+
+    # ---------------- Internal helpers ----------------
+    def _read_nuts(self, country_code, file_name, nuts_level, year):
+        package_root = Path(pkg_resources.files(landuse_v1))
+        data_root = package_root / "Data" / "Yearly"
+        folder_name = f"{country_code}_{file_name}_NUTS{nuts_level}_{year}"
+        shp_file = data_root / folder_name / f"{folder_name}.shp"
+
+        if not shp_file.exists():
+            raise FileNotFoundError(f"NUTS shapefile not found: {shp_file}")
+
+        return gpd.read_file(shp_file)
+
+    def _read_crop(self, crop_name, nuts_level, year):
+        crop_name_clean = str(crop_name).replace(" ", "_")
+        package_root = Path(pkg_resources.files(landuse_v1))
+        data_root = package_root / "Data" / "Yearly"
+        folder_name = f"DE_landuse_{crop_name_clean}_NUTS{nuts_level}_{year}"
+        shp_file = data_root / folder_name / f"{folder_name}.shp"
+
+        if not shp_file.exists():
+            raise FileNotFoundError(f"Crop shapefile not found: {shp_file}")
+
+        return gpd.read_file(shp_file)
 
     def __repr__(self):
-        return f"<NUTSHandler {self.country_code} NUTS{self.nuts_level} {self.year} ({len(self.gdf)} features)>"
+        return "<NUTSHandler (stateless)>"
